@@ -126,19 +126,13 @@ test_loader = make_dataloader(test_data, is_training=False, generator=rng_genera
 
 metafi.apply(weights_init)
 
-if torch.cuda.is_available():
-    device = torch.device("cuda")
-    print(f"Using GPU: {torch.cuda.get_device_name(0)}")
-    print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
-    metafi = metafi.cuda()
-    criterion_L2 = nn.MSELoss().cuda()
-    print("Model and loss moved to GPU")
-    print(f"Model is on CUDA: {next(metafi.parameters()).is_cuda}")
-else:
-    device = torch.device("cpu")
-    print("WARNING: CUDA not available, using CPU")
-    metafi = metafi.to(device)
-    criterion_L2 = nn.MSELoss()
+device = torch.device("cuda")
+print(f"Using GPU: {torch.cuda.get_device_name(0)}")
+print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB")
+metafi = metafi.cuda()
+criterion_L2 = nn.MSELoss().cuda()
+print("Model and loss moved to GPU")
+print(f"Model is on CUDA: {next(metafi.parameters()).is_cuda}")
 
 #l2_loss = nn.L2Loss().cuda() 
 optimizer = torch.optim.SGD(metafi.parameters(), lr = 0.001, momentum=0.9)

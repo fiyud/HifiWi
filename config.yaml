@@ -70,11 +70,11 @@ split_to_use: manual_split
 
 init_rand_seed: 0
 train_loader:
-  batch_size: 32
+  batch_size: 512
   # num_workers: 4
   # pin_memory: true
 val_loader:
-  batch_size: 32
+  batch_size: 512
   # num_workers: 4
   # pin_memory: true
 test_loader:

@@ -374,14 +374,14 @@ def collate_fn_padd(batch):
 
     return batch_data
 
-def make_dataloader(dataset, is_training, generator, batch_size, collate_fn_padd = collate_fn_padd):
-    loader = DataLoader(
+def make_dataloader(dataset, is_training=True, generator=None, batch_size=32, 
+                    shuffle=True, drop_last=True, num_workers=0, pin_memory=False):
+    return torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
-        collate_fn=collate_fn_padd,
-        shuffle=is_training,
-        drop_last=is_training,
+        shuffle=shuffle if is_training else False,
+        drop_last=drop_last,
         generator=generator,
-        pin_memory=True
+        num_workers=num_workers,
+        pin_memory=pin_memory
     )
-    return loader
