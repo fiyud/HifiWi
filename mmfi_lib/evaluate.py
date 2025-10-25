@@ -1,5 +1,19 @@
 import numpy as np
 
+def compute_pck_pckh(dt_kpts, gt_kpts, threshold):
+    dt = np.array(dt_kpts)
+    gt = np.array(gt_kpts)
+    assert(dt.shape[0] == gt.shape[0])
+    kpts_num = gt.shape[2]
+    refer_kpts = [5, 12]
+    scale = np.sqrt(np.sum(np.square(gt[:, :, refer_kpts[0]] - gt[:, :, refer_kpts[1]]), 1))
+    dist = np.sqrt(np.sum(np.square(dt - gt), 1)) / np.tile(scale, (gt.shape[2], 1)).T
+    pck = np.zeros(gt.shape[2] + 1)
+    for kpt_idx in range(kpts_num):
+        pck[kpt_idx] = 100 * np.mean(dist[:, kpt_idx] <= threshold)
+    pck[-1] = 100 * np.mean(dist <= threshold)    
+    return pck
+
 def compute_similarity_transform(X, Y, compute_optimal_scale=False):
     """
     A port of MATLAB's `procrustes` function to Numpy.

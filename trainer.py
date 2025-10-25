@@ -8,10 +8,10 @@ import random
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from mmfi_lib.mmfi import make_dataset, make_dataloader, MMFi_Dataset, decode_config, MMFi_Database
+from mmfi_lib.mmfi import make_dataset, make_dataloader
 import torch.nn as nn
 from sklearn.model_selection import train_test_split
-from mmfi_lib.evaluate import calulate_error
+from mmfi_lib.evaluate import calulate_error, compute_pck_pckh
 from posenet_model import posenet, weights_init
 
 plt.style.use('seaborn-v0_8-darkgrid')
@@ -26,25 +26,11 @@ def set_seed(seed=0):
     torch.backends.cudnn.benchmark = False
 
 def visualize_keypoints(pred_keypoints, gt_keypoints, save_dir='visualizations'):
-    """
-    Visualize predicted vs ground truth keypoints as human pose
-    pred_keypoints: (batch, 17, 2) - (x, y) coordinates
-    gt_keypoints: (batch, 17, 2) - (x, y) coordinates
-    
-    17 keypoints in COCO format:
-    0: nose, 1: left_eye, 2: right_eye, 3: left_ear, 4: right_ear,
-    5: left_shoulder, 6: right_shoulder, 7: left_elbow, 8: right_elbow,
-    9: left_wrist, 10: right_wrist, 11: left_hip, 12: right_hip,
-    13: left_knee, 14: right_knee, 15: left_ankle, 16: right_ankle
-    """
     os.makedirs(save_dir, exist_ok=True)
     
-    # Take first 3 samples from batch for visualization
     num_samples = min(3, pred_keypoints.shape[0])
     
-    # Define skeleton connections for human pose
     skeleton = [
-        # Head
         [0, 1], [0, 2], [1, 3], [2, 4],  # nose-eyes, eyes-ears
         # Upper body
         [5, 6],  # shoulders
@@ -66,7 +52,6 @@ def visualize_keypoints(pred_keypoints, gt_keypoints, save_dir='visualizations')
         pred = pred_keypoints[sample_idx]  # (17, 2)
         gt = gt_keypoints[sample_idx]  # (17, 2)
         
-        # Plot ground truth pose (upright)
         ax1 = axes[sample_idx, 0]
         ax1.scatter(gt[:, 0], -gt[:, 1], c='blue', s=150, alpha=0.7, label='GT Keypoints', zorder=3)
         for connection in skeleton:
@@ -81,7 +66,6 @@ def visualize_keypoints(pred_keypoints, gt_keypoints, save_dir='visualizations')
         ax1.grid(True, alpha=0.3)
         ax1.set_aspect('equal', adjustable='box')
         
-        # Plot predicted pose (upright)
         ax2 = axes[sample_idx, 1]
         ax2.scatter(pred[:, 0], -pred[:, 1], c='red', s=150, alpha=0.7, label='Predicted Keypoints', zorder=3)
         for connection in skeleton:
@@ -96,7 +80,6 @@ def visualize_keypoints(pred_keypoints, gt_keypoints, save_dir='visualizations')
         ax2.grid(True, alpha=0.3)
         ax2.set_aspect('equal', adjustable='box')
         
-        # Plot overlay comparison (upright)
         ax3 = axes[sample_idx, 2]
         ax3.scatter(gt[:, 0], -gt[:, 1], c='blue', s=150, alpha=0.6, label='Ground Truth', zorder=3)
         ax3.scatter(pred[:, 0], -pred[:, 1], c='red', s=150, alpha=0.6, label='Prediction', zorder=3)
@@ -119,21 +102,7 @@ def visualize_keypoints(pred_keypoints, gt_keypoints, save_dir='visualizations')
     plt.savefig(f'{save_dir}/best_model_poses.png', dpi=150, bbox_inches='tight')
     plt.close()
     print(f"Best model pose visualization saved to: {save_dir}/best_model_poses.png")
-
-def compute_pck_pckh(dt_kpts, gt_kpts, threshold):
-    dt = np.array(dt_kpts)
-    gt = np.array(gt_kpts)
-    assert(dt.shape[0] == gt.shape[0])
-    kpts_num = gt.shape[2]
-    refer_kpts = [5, 12]
-    scale = np.sqrt(np.sum(np.square(gt[:, :, refer_kpts[0]] - gt[:, :, refer_kpts[1]]), 1))
-    dist = np.sqrt(np.sum(np.square(dt - gt), 1)) / np.tile(scale, (gt.shape[2], 1)).T
-    pck = np.zeros(gt.shape[2] + 1)
-    for kpt_idx in range(kpts_num):
-        pck[kpt_idx] = 100 * np.mean(dist[:, kpt_idx] <= threshold)
-    pck[-1] = 100 * np.mean(dist <= threshold)    
-    return pck
-
+    
 set_seed(42)
 
 #X = torch.rand(32,3,114,10)
@@ -150,7 +119,7 @@ with open('config.yaml', 'r') as fd:  # change the .yaml file in your code.
 train_dataset, test_dataset = make_dataset(dataset_root, config)
 rng_generator = torch.manual_seed(config['init_rand_seed'])
 train_loader = make_dataloader(train_dataset, is_training=True, generator=rng_generator, **config['train_loader'])
-#testing_loader = make_dataloader(test_dataset, is_training=False, generator=rng_generator, **config['test_loader'])
+
 val_data , test_data = train_test_split(test_dataset, test_size=0.5, random_state=41)
 val_loader = make_dataloader(val_data, is_training=False, generator=rng_generator, **config['val_loader'])
 test_loader = make_dataloader(test_data, is_training=False, generator=rng_generator, **config['test_loader'])
@@ -182,7 +151,6 @@ def lambda_rule(epoch):
     return lr_l
 
 scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda epoch: 1.0 - max(0, epoch + epoch_count - n_epochs) / float(n_epochs_decay + 1))
-#scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda epoch: 1.0 - max(0, epoch + epoch_count - n_epochs) / float(n_epochs_decay + 1))
 
 l2_lambda = 0.001
 regularization_loss = 0
@@ -400,11 +368,8 @@ training_loss = train_mean_loss_iter
 validation_loss = valid_mean_loss_iter
 
 plt.plot(epochs, training_loss, label='Training Loss', color='blue', linewidth=2)
-
-# Vẽ đồ thị loss function cho tập validation
 plt.plot(epochs, validation_loss, label='Validation Loss', color='red', linewidth=2)
 
-# Tùy chỉnh đồ thị
 plt.xlabel('Epochs', fontsize=12, fontweight='bold')
 plt.ylabel('Loss', fontsize=12, fontweight='bold')
 plt.title('Loss Function Over Epochs', fontsize=14, fontweight='bold')
@@ -413,7 +378,6 @@ plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.savefig(f'{vis_dir}/simple_loss_plot.png', dpi=150, bbox_inches='tight')
 print(f"\nSimple loss plot saved to: {vis_dir}/simple_loss_plot.png")
-# Hiển thị đồ thị
 plt.show()
 
 print(f"\n{'='*60}")
