@@ -1,7 +1,5 @@
 import numpy as np
 
-
-
 def compute_similarity_transform(X, Y, compute_optimal_scale=False):
     """
     A port of MATLAB's `procrustes` function to Numpy.

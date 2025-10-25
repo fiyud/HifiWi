@@ -30,7 +30,6 @@ class SKConv(nn.Module):
             ))
         self.gap = nn.AdaptiveAvgPool2d((1,1))
 
-
         if pool_dim == 'freq':
            d = int(dim1/r)
            self.fc = nn.Sequential(nn.Linear(dim1, d),
