@@ -124,31 +124,16 @@ def compute_pck_pckh(dt_kpts, gt_kpts, threshold):
     dt = np.array(dt_kpts)
     gt = np.array(gt_kpts)
     assert(dt.shape[0] == gt.shape[0])
-    
     kpts_num = gt.shape[2]
-    
-    # Compute normalized distance using torso diameter as scale
-    # Use keypoints [5, 12] as reference (left shoulder to right hip, common for PCK)
-    # If your dataset uses different keypoints, adjust these indices
     refer_kpts = [5, 12]
-    
-    # Compute scale (torso diameter)
     scale = np.sqrt(np.sum(np.square(gt[:, :, refer_kpts[0]] - gt[:, :, refer_kpts[1]]), 1))
-    
-    # Compute euclidean distance between prediction and ground truth
     dist = np.sqrt(np.sum(np.square(dt - gt), 1)) / np.tile(scale, (gt.shape[2], 1)).T
-    
-    # Compute pck for each keypoint at the given threshold
     pck = np.zeros(gt.shape[2] + 1)
     for kpt_idx in range(kpts_num):
         pck[kpt_idx] = 100 * np.mean(dist[:, kpt_idx] <= threshold)
-    
-    # Compute average pck across all keypoints
-    pck[-1] = 100 * np.mean(dist <= threshold)
-    
+    pck[-1] = 100 * np.mean(dist <= threshold)    
     return pck
 
-# Set random seed for reproducibility
 set_seed(42)
 
 #X = torch.rand(32,3,114,10)
@@ -195,6 +180,7 @@ epoch_count = 1
 def lambda_rule(epoch):
     lr_l = 1.0 - max(0, epoch + epoch_count - n_epochs) / float(n_epochs_decay + 1)
     return lr_l
+
 scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda epoch: 1.0 - max(0, epoch + epoch_count - n_epochs) / float(n_epochs_decay + 1))
 #scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda epoch: 1.0 - max(0, epoch + epoch_count - n_epochs) / float(n_epochs_decay + 1))
 
@@ -215,17 +201,14 @@ train_mean_loss_iter = []
 valid_mean_loss_iter = []
 time_iter = []
 
-# Initialize metric tracking lists
 pck_50_epoch_history = []
 pck_20_epoch_history = []
 mpjpe_epoch_history = []
 pa_mpjpe_epoch_history = []
 
-# Store best model predictions for final visualization
 best_pred_keypoints = None
 best_gt_keypoints = None
 
-# Create visualization directory
 vis_dir = 'visualizations'
 os.makedirs(vis_dir, exist_ok=True)
 print(f"\nVisualizations will be saved to: {vis_dir}/")
@@ -237,17 +220,13 @@ for epoch_index in range(num_epochs):
     metric = []
     metafi.train()
     relation_mean =[]
-    
-    # Debug: Check GPU usage at start of epoch
     if epoch_index == 0 and torch.cuda.is_available():
         print(f"\nEpoch {epoch_index} - GPU Memory allocated: {torch.cuda.memory_allocated(0) / 1024**2:.2f} MB")
         print(f"GPU Memory cached: {torch.cuda.memory_reserved(0) / 1024**2:.2f} MB")
     
     for idx, data in enumerate(train_loader):
-
         csi_data = data['input_wifi-csi']
         
-        # Convert to tensor and move to device properly
         if not isinstance(csi_data, torch.Tensor):
             csi_data = torch.from_numpy(csi_data).float()
         else:
@@ -282,7 +261,7 @@ for epoch_index in range(num_epochs):
         time_iter.append(time)
         optimizer.zero_grad()
 
-        loss.backward(retain_graph=True)
+        loss.backward() # retain_graph=True
         optimizer.step()
 
         lr = np.array(scheduler.get_last_lr())
@@ -294,7 +273,7 @@ for epoch_index in range(num_epochs):
     sum_time = np.mean(time_iter)
     train_mean_loss = np.mean(train_loss_iter)
     train_mean_loss_iter.append(train_mean_loss)
-    #relation_mean = np.mean(relation, 0)
+    # relation_mean = np.mean(relation, 0)
     print('end of the epoch: %d, with loss: %.3f' % (epoch_index, train_mean_loss,))
     #total_params = sum(p.numel() for p in metafi.parameters())
     #print("Số lượng tham số trong mô hình: ", total_params)
@@ -308,22 +287,18 @@ for epoch_index in range(num_epochs):
     with torch.no_grad():
         for idx, data in enumerate(val_loader):
             csi_data = data['input_wifi-csi']
+            keypoint = data['output']
             
-            # Convert to tensor and move to device properly
             if not isinstance(csi_data, torch.Tensor):
-                csi_data = torch.from_numpy(csi_data).float()
-            else:
-                csi_data = csi_data.float()
-            csi_data = csi_data.to(device)
-            
-            #csi_dafeaturesta = csi_data.view(16,2,3,114,10)
-            keypoint = data['output']#17,3
+                csi_data = torch.from_numpy(csi_data)
+            csi_data = csi_data.float().to(device, non_blocking=True)  # ADD non_blocking
+
             if not isinstance(keypoint, torch.Tensor):
-                keypoint = torch.from_numpy(keypoint).float()
-            keypoint = keypoint.to(device)
-            
-            xy_keypoint = keypoint[:,:,0:2].to(device)
-            confidence = keypoint[:,:,2:3].to(device)
+                keypoint = torch.from_numpy(keypoint)
+            keypoint = keypoint.float().to(device, non_blocking=True)  # ADD non_blocking
+
+            xy_keypoint = keypoint[:, :, 0:2]      # Already on GPU
+            confidence = keypoint[:, :, 2:3] 
 
             pred_xy_keypoint,time = metafi(csi_data)  # 4,2,17,17
             #pred_xy_keypoint = pred_xy_keypoint.squeeze()

@@ -264,7 +264,7 @@ class MMFi_Dataset(Dataset):
                 raw_data = f.read()
                 data = np.frombuffer(raw_data, dtype=np.float64)
                 data = data.copy().reshape(-1, 5)
-                # data = data[:, :3]
+                data = data[:, :3]
         elif mod == 'wifi-csi':
             data = scio.loadmat(frame)['CSIamp']
             data[np.isinf(data)] = np.nan
@@ -275,6 +275,22 @@ class MMFi_Dataset(Dataset):
                     temp_not_nan_col = temp_col[temp_col == temp_col]
                     temp_col[np.isnan(temp_col)] = temp_not_nan_col.mean()
             data = (data - np.min(data)) / (np.max(data) - np.min(data))
+        
+        # elif mod == 'wifi-csi':
+        #     npy_path = frame.replace('.mat', '_processed.npy')
+        #     if os.path.exists(npy_path):
+        #         data = np.load(npy_path)
+        #     else:
+        #         data = scio.loadmat(frame)['CSIamp']
+        #         data[np.isinf(data)] = np.nan
+        #         for i in range(10):
+        #             temp_col = data[:, :, i]
+        #             nan_num = np.count_nonzero(temp_col != temp_col)
+        #             if nan_num != 0:
+        #                 temp_not_nan_col = temp_col[temp_col == temp_col]
+        #                 temp_col[np.isnan(temp_col)] = temp_not_nan_col.mean()
+        #         data = (data - np.min(data)) / (np.max(data) - np.min(data))
+
         else:
             raise ValueError('Found unseen modality in this dataset.')
         return data
