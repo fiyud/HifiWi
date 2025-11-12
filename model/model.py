@@ -285,7 +285,7 @@ class ViT_Pose_Decoder(torch.nn.Module):
             x = x.view(-1, self.emb_dim, self.keypoints).permute(0,2,1)  
        
         # GCN
-        adj = self.adj_matrix.to(feature.device)
+        adj = self.adj_matrix.to(features.device)
         x = self.gconv1(x, adj)
         x = self.gconv2(x, adj)
         x = self.gconv3(x, adj)

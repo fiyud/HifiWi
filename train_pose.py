@@ -21,6 +21,7 @@ from torchvision import models, transforms
 
 from model.metafi.mynetwork import metafinet, metafi_weights_init
 from model.hpeli.hpeli import hpelinet, hpeli_weights_init
+from model.proposed.model import create_ghostpose, ghostpose_weights_init
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Pose Decoding Stage")
@@ -122,6 +123,14 @@ if __name__ == '__main__':
                 model = hpelinet(num_keypoints=14, num_coor=3, subcarrier_num=180, num_person=config['num_person'],dataset=config['dataset_name']).to(device)
                 model.apply(hpeli_weights_init)
                 optim = torch.optim.AdamW(model.parameters(), lr=1e-2)
+            elif config['experiment_name'] == 'ghostpose':
+                model = create_ghostpose(
+                    dataset=config['dataset_name'], 
+                    base_channels=64  # Can be tuned: 32 (ultra-light), 64 (balanced), 96 (performance)
+                )
+                model = model.to(device)
+                model.apply(ghostpose_weights_init)
+                optim = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
             else:
                 model = MAE_ViT(image_size=(180, 20),
                         patch_size=(2,2),

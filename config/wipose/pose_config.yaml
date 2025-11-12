@@ -14,7 +14,7 @@ base_learning_rate: 0.001
 total_epoch: 50
 dataset_name: wipose
 setting: amplitude_dwt
-experiment_name: hpeli
+experiment_name: ghostpose
 training_semi: False
 pretrained_model_path: Null
 save_path: pose_weights
