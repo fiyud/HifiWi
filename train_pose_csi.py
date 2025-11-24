@@ -18,18 +18,37 @@ from model.model import *
 from utils import setup_seed
 
 from torchvision import models, transforms
+import math
 
 from model.metafi.mynetwork import metafinet, metafi_weights_init
 from model.hpeli.hpeli import hpelinet, hpeli_weights_init
-from model.proposed.network import CSI_HPE_withPairwiseRefine, init_csi_hpe_weights_pairwise
+from model.mamba_csi.mamba_csi2 import HCMamba_CSI_HPE
+# from model.mamba_csi.mamba_csi3 import HCMamba_CSI_HPE
+
+from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingLR
+
 import warnings
 warnings.filterwarnings("ignore")
 
+def count_parameters(model):
+    total = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Total Trainable Parameters: {total:,}")
+    return total
+
+def lr_schedule(epoch):
+    
+    if epoch < warmup_epochs:
+        return (epoch + 1) / warmup_epochs  
+
+    progress = (epoch - warmup_epochs) / (total_epochs - warmup_epochs)
+    cosine = 0.5 * (1 + math.cos(math.pi * progress))
+
+    return (min_lr / base_lr) + (1 - min_lr / base_lr) * cosine
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Pose Decoding Stage")
-    parser.add_argument("--config_file", type=str, help="Configuration YAML file", default='config/wipose/pose_config.yaml')
+    parser.add_argument("--config_file", type=str, help="Configuration YAML file", default='config/person_in_wifi_3d/pose_config.yaml')
 
 
     args = parser.parse_args()
@@ -37,6 +56,11 @@ if __name__ == '__main__':
     with open(args.config_file, 'r') as fd:
         config = yaml.load(fd, Loader=yaml.FullLoader)
     
+    warmup_epochs = 5               
+    min_lr = 1e-6              
+    base_lr = config['lr'] if 'lr' in config else 1e-3
+    total_epochs = config['total_epoch']
+
     setup_seed(config['seed'])
     dataset_root = config['dataset_root']
 
@@ -66,38 +90,34 @@ if __name__ == '__main__':
     else:
         print('No dataset!')
 
-    # TODO: Settings, e.g., your model, optimizer, device, ...
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     if config['pretrained_model_path'] is not None:
         print('*'*20+'   Load Pretrain Weights   '+'*'*20)
-        print('*'*20+'  '+config['dataset_name']+','+config['setting']+','+config['experiment_name']+'   '+'*'*20)
+        print('*'*20+'   '+config['dataset_name']+','+config['setting']+','+config['experiment_name']+'   '+'*'*20)
         model = torch.load(config['pretrained_model_path'], map_location='cpu')
         writer = SummaryWriter(os.path.join('logs', config['dataset_name'], config['setting'], 'pose_pretrain',config['experiment_name']))
         if config['dataset_name'] == 'mmfi-csi':
-            model = ViT_Pose_Decoder(model.encoder, keypoints=17, coor_num=3, token_num=114, dataset=config['dataset_name']).to(device)   # 72*5
-            optim = torch.optim.SGD(filter(lambda p:p.requires_grad, model.parameters()),lr=1e-3, weight_decay=0.01)   #  weight_decay=0.01
+            model = ViT_Pose_Decoder(model.encoder, keypoints=17, coor_num=3, token_num=114, dataset=config['dataset_name']).to(device)
+            optim = torch.optim.SGD(filter(lambda p:p.requires_grad, model.parameters()),lr=1e-3, weight_decay=0.01)
         elif config['dataset_name'] == 'person-in-wifi-3d':
             model = ViT_Pose_Decoder(model.encoder, keypoints=14, coor_num=3, token_num=90*10, dataset=config['dataset_name'], num_person=config['num_person']).to(device)
             optim = torch.optim.AdamW(filter(lambda p:p.requires_grad, model.parameters()), lr=1e-3) 
         elif config['dataset_name'] == 'wipose':
             model = ViT_Pose_Decoder(model.encoder, keypoints=18, coor_num=2, token_num=45*5, dataset=config['dataset_name']).to(device)
-            optim = torch.optim.AdamW(filter(lambda p:p.requires_grad, model.parameters()), lr=1e-3)  
-        # save model
+            optim = torch.optim.AdamW(filter(lambda p:p.requires_grad, model.parameters()), lr=1e-3) 
         weights_path = os.path.join(config['save_path'], config['dataset_name'], config['setting'], 'pose_pretrain', config['experiment_name'])
         if not os.path.exists(weights_path):
             os.makedirs(weights_path)
-        # save train feature
         train_feature_path = os.path.join('features', config['dataset_name'], config['setting'], 'pose_pretrain', config['experiment_name'])
         if not os.path.exists(train_feature_path):
             os.makedirs(train_feature_path)
-        # save test feature
         test_feature_path = os.path.join('features', config['dataset_name'], config['setting'], 'pose_pretrain', config['experiment_name'])
         if not os.path.exists(test_feature_path):
             os.makedirs(test_feature_path)
     else:
-        print('*'*20+'   Training from Scratch  '+'*'*20)
-        print('*'*20+'  '+config['dataset_name']+','+config['setting']+','+config['experiment_name']+'   '+'*'*20)
+        print('*'*20+'   Training from Scratch   '+'*'*20)
+        print('*'*20+'   '+config['dataset_name']+','+config['setting']+','+config['experiment_name']+'   '+'*'*20)
         writer = SummaryWriter(os.path.join('logs', config['dataset_name'], config['setting'], 'pose_scratch',config['experiment_name']))
         if config['dataset_name'] == 'mmfi-csi':
             if config['experiment_name'] == 'metafi':
@@ -107,20 +127,28 @@ if __name__ == '__main__':
             elif config['experiment_name'] == 'hpeli':
                 model = hpelinet(num_keypoints=17, num_coor=3, subcarrier_num=114, num_person=config['num_person'],dataset=config['dataset_name']).to(device)
                 model.apply(hpeli_weights_init)
-                optim = torch.optim.SGD(model.parameters(),lr=1e-3, momentum=0.9)   
-            elif config['experiment_name'] == 'csi-hpe-hgnn':
-                model = CSI_HPE_withPairwiseRefine(emb_dim=256, num_keypoints=17, num_person=config['num_person'], coor_num=3).to(device)
-                model.apply(init_csi_hpe_weights_pairwise)
+                optim = torch.optim.SGD(model.parameters(),lr=1e-3, momentum=0.9) 
+            elif config['experiment_name'] == 'mamba_csi':
+                model = HCMamba_CSI_HPE(Tx=3,
+                                        Rx_Subc=3*38,
+                                        d_model=128,
+                                        N_person=config['num_person'],
+                                        N_kp=17,
+                                        D_coord=3,
+                                        num_stm_layers=4,
+                                        num_ltm_layers=2,
+                                        downsample_rate=2).to(device)
+
                 optim = torch.optim.AdamW(model.parameters(), lr=1e-3)
 
             else:
                 model = MAE_ViT(image_size=(114, 10),
-                        patch_size=(2,2),
-                        encoder_layer=4,
-                        encoder_head=4,
-                        decoder_layer=2,
-                        decoder_head=4,
-                        emb_dim=256)
+                                patch_size=(2,2),
+                                encoder_layer=4,
+                                encoder_head=4,
+                                decoder_layer=2,
+                                decoder_head=4,
+                                emb_dim=256)
                 model = ViT_Pose_Decoder(model.encoder, keypoints=17, coor_num=3, token_num=285, dataset=config['dataset_name']).to(device)
                 optim = torch.optim.AdamW(model.parameters(), lr=1e-3)
         elif config['dataset_name'] == 'person-in-wifi-3d':
@@ -132,15 +160,29 @@ if __name__ == '__main__':
                 model = hpelinet(num_keypoints=14, num_coor=3, subcarrier_num=180, num_person=config['num_person'],dataset=config['dataset_name']).to(device)
                 model.apply(hpeli_weights_init)
                 optim = torch.optim.AdamW(model.parameters(), lr=1e-2)
+
+            elif config['experiment_name'] == 'mamba_csi':
+                model = HCMamba_CSI_HPE(Tx=3,
+                                        Rx_Subc=3*60,
+                                        d_model=256,
+                                        N_person=config['num_person'],
+                                        N_kp=14,
+                                        D_coord=3,
+                                        num_stm_layers=8,
+                                        num_ltm_layers=8,
+                                        downsample_rate=4,
+                                        ).to(device)
+                optim = torch.optim.AdamW(model.parameters(), lr=1e-3)
+
             else:
                 model = MAE_ViT(image_size=(180, 20),
-                        patch_size=(2,2),
-                        encoder_layer=4,
-                        encoder_head=4,
-                        decoder_layer=2,
-                        decoder_head=4,
-                        emb_dim=256,
-                        input_dim=3)
+                                patch_size=(2,2),
+                                encoder_layer=4,
+                                encoder_head=4,
+                                decoder_layer=2,
+                                decoder_head=4,
+                                emb_dim=256,
+                                input_dim=3)
                 model = ViT_Pose_Decoder(model.encoder, keypoints=14, coor_num=3, token_num=900, dataset=config['dataset_name'], num_person=config['num_person']).to(device)
                 optim = torch.optim.SGD(model.parameters(),lr=1e-2, momentum=0.9)
         elif config['dataset_name'] == 'wipose':
@@ -151,37 +193,38 @@ if __name__ == '__main__':
             elif config['experiment_name'] == 'hpeli':
                 model = hpelinet(num_keypoints=18, num_coor=2, subcarrier_num=90, dataset=config['dataset_name']).to(device)
                 model.apply(hpeli_weights_init)
-                optim = torch.optim.SGD(model.parameters(),lr=1e-2, momentum=0.9)   #1e-3
-            elif config['experiment_name'] == 'csi-hpe-hgnn':
-                model = CSI_HPE_withPairwiseRefine(emb_dim=128, num_keypoints=18, coor_num=2).to(device)
-                model.apply(init_csi_hpe_weights_pairwise)
+                optim = torch.optim.SGD(model.parameters(),lr=1e-2, momentum=0.9)
+            elif config['experiment_name'] == 'mamba_csi':
+                model = HCMamba_CSI_HPE(Tx=3,
+                                        Rx_Subc=3*30,
+                                        d_model=512,
+                                        N_person=config['num_person'],
+                                        N_kp=18,
+                                        D_coord=2,
+                                        num_stm_layers=16,
+                                        num_ltm_layers=16,
+                                        downsample_rate=4).to(device)
                 optim = torch.optim.AdamW(model.parameters(), lr=1e-3)
             else:
                 model = MAE_ViT(image_size=(90, 5),
-                        patch_size=(2,1),
-                        encoder_layer=4,
-                        encoder_head=4,
-                        decoder_layer=2,
-                        decoder_head=4,
-                        emb_dim=256,
-                        input_dim=3)
+                                patch_size=(2,1),
+                                encoder_layer=4,
+                                encoder_head=4,
+                                decoder_layer=2,
+                                decoder_head=4,
+                                emb_dim=256,
+                                input_dim=3)
                 model = ViT_Pose_Decoder(model.encoder, keypoints=18, coor_num=2, token_num=45*5, dataset=config['dataset_name']).to(device)
                 optim = torch.optim.AdamW(model.parameters(), lr=1e-3)
-        # save model
         weights_path = os.path.join(config['save_path'], config['dataset_name'], config['setting'], 'pose_scratch', config['experiment_name'])
         if not os.path.exists(weights_path):
             os.makedirs(weights_path)
-        # save train feature
-        # train_feature_path = os.path.join('features', config['dataset_name'], config['setting'], 'pose_scratch', config['experiment_name'])
-        # if not os.path.exists(train_feature_path):
-        #     os.makedirs(train_feature_path)
-        # # save test feature
-        # test_feature_path = os.path.join('features', config['dataset_name'], config['setting'], 'pose_scratch', config['experiment_name'])
-        # if not os.path.exists(test_feature_path):
-        #     os.makedirs(test_feature_path)
 
 
-    # TODO: Codes for training (and saving models)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optim, lr_lambda=lr_schedule)
+
+
+
     optim.zero_grad()
     step_count = 0
     best_val_mpjpe = 1
@@ -191,7 +234,7 @@ if __name__ == '__main__':
     best_val_pck = [0 for _ in range(5)]
     best_val_pck_align = [0 for _ in range(5)]
     pck_order = [50, 40, 30, 20, 10]
-  
+    count_parameters(model)
     for epoch in range(config['total_epoch']):
         model.train()
         losses = []
@@ -199,19 +242,17 @@ if __name__ == '__main__':
         pampjpe_list = []
         mpjpe_align_list = []
         pampjpe_align_list = []
-        # feature_list = []
         wifi_list = []
         label_list = []
         pred_list = []
         gt_list = []
-       
+        
         pck_iter = [[] for _ in range(5)]
         pck_align_iter = [[] for _ in range(5)]
         attention_list_first = []
         attention_list_second = []
         
         for batch_idx, batch_data in enumerate(train_loader):
-            # Please check the data structure here.
             csi_data = batch_data['input_wifi-csi'].to(device)
             n, _, _, _ = csi_data.size()
             pose_gt = batch_data['output'].to(device)
@@ -221,11 +262,11 @@ if __name__ == '__main__':
             if config['dataset_name'] == 'mmfi-csi' or config['dataset_name'] == 'wipose':
                 label = batch_data['label'].to(device)
                 label_list.append(label.data.cpu().numpy())
-            # predicted_pose, feature = model(csi_data)
-            predicted_pose = model(csi_data, H)
-            if predicted_pose.size(1) == 1:
-                predicted_pose = predicted_pose.squeeze(1)
+            predicted_pose = model(csi_data)
 
+            if config['dataset_name'] == 'mmfi-csi' or config['dataset_name'] == 'wipose' and  config['experiment_name'] == 'mamba_csi':
+                if predicted_pose.size(1) == 1:
+                    predicted_pose = predicted_pose.squeeze(1)
 
             if config['dataset_name'] == 'person-in-wifi-3d':
                 person_num = batch_data['person_num'].to(device)
@@ -234,12 +275,12 @@ if __name__ == '__main__':
 
             gt_list.append(pose_gt.data.cpu().numpy())
             pred_list.append(predicted_pose.data.cpu().numpy())
-            # feature_list.append(feature.data.cpu().numpy())
             wifi_list.append(csi_data.data.cpu().numpy())
             
             loss_mpjpe = torch.mean(torch.norm(predicted_pose-pose_gt, dim=-1))
             loss = loss_mpjpe
             loss.backward()
+            step_count += 1
             if step_count % steps_per_update == 0:
                 optim.step()
                 optim.zero_grad()
@@ -248,28 +289,19 @@ if __name__ == '__main__':
  
         current_lr = optim.param_groups[0]['lr']
         writer.add_scalar('learning_rate', current_lr, global_step=epoch)
-        # feature_list = np.concatenate(feature_list, axis=0)
         wifi_list = np.concatenate(wifi_list, axis=0)
         gt_list = np.concatenate(gt_list, axis=0)
         pred_list = np.concatenate(pred_list, axis=0)
         if config['dataset_name'] == 'mmfi-csi' or config['dataset_name'] == 'wipose':
             label_list = np.concatenate(label_list, axis=0)
 
-        # if config['dataset_name'] == 'mmfi-csi':
-        #     np.savez(os.path.join(train_feature_path, 'train_feature.npz'), fea=feature_list, pred_pose=pred_list, gt_pose=gt_list, att=[attention_list_first, attention_list_second], wifi=wifi_list, label=label_list)
-        # elif config['dataset_name'] == 'person-in-wifi-3d':
-        #     np.savez(os.path.join(train_feature_path, 'train_feature.npz'), fea=feature_list, pred_pose=pred_list, gt_pose=gt_list, att=[attention_list_first, attention_list_second], wifi=wifi_list)
-        # elif config['dataset_name'] == 'wipose':
-        #     np.savez(os.path.join(train_feature_path, 'train_feature.npz'), fea=feature_list, pred_pose=pred_list, gt_pose=gt_list, att=[attention_list_first, attention_list_second], wifi=wifi_list, label=label_list)
         print('*'*100)
         print(f'In epoch {epoch}, learning rate: {current_lr}, traning loss:{avg_train_loss}.')
 
 
-        # # TODO: Codes for test (if)
         model.eval()
         gt_list = []
         pred_list = []
-        # feature_list = []
         wifi_list = []
         label_list = []
         attention_list_first = []
@@ -293,12 +325,11 @@ if __name__ == '__main__':
                     label = batch_data['label'].to(device)
                     label_list.append(label.data.cpu().numpy())
 
-                # predicted_val_pose, pred_fea = model(val_csi)
-                predicted_val_pose = model(val_csi, H)
+                predicted_val_pose = model(val_csi)
                 
-
-                if predicted_val_pose.size(1) == 1:
-                    predicted_val_pose = predicted_val_pose.squeeze(1)
+                if config['dataset_name'] == 'mmfi-csi' or config['dataset_name'] == 'wipose' and  config['experiment_name'] == 'mamba_csi':
+                    if predicted_pose.size(1) == 1:
+                        predicted_pose = predicted_pose.squeeze(1)
 
                 if config['dataset_name'] == 'person-in-wifi-3d':
                     person_num = batch_data['person_num'].to(device)
@@ -306,13 +337,11 @@ if __name__ == '__main__':
                     val_pose_gt = torch.cat([val_pose_gt[:,:num,:,:].reshape((-1, 14, 3)) for num in person_num], dim=0)
 
 
-                # feature_list.append(pred_fea.data.cpu().numpy())
                 wifi_list.append(val_csi.data.cpu().numpy())
                 gt_list.append(val_pose_gt.data.cpu().numpy())
                 pred_list.append(predicted_val_pose.data.cpu().numpy())
                 
                 loss = torch.mean(torch.norm(predicted_val_pose-val_pose_gt, dim=-1))
-                # calculate the pck, mpjpe, pampjpe
                 for idx, percentage in enumerate([0.5, 0.4, 0.3, 0.2, 0.1]):
                     pck_iter[idx].append(compute_pck_pckh(predicted_val_pose.permute(0,2,1).data.cpu().numpy(), val_pose_gt.permute(0,2,1).data.cpu().numpy(), percentage, align=False, dataset=config['dataset_name']))
                 mpjpe, pampjpe, mpjpe_joints, pampjpe_joints = calulate_error(predicted_val_pose.data.cpu().numpy(), val_pose_gt.data.cpu().numpy(), align=False)
@@ -331,19 +360,14 @@ if __name__ == '__main__':
                 
             gt_list = np.concatenate(gt_list, axis=0)
             pred_list = np.concatenate(pred_list, axis=0)
-            # feature_list = np.concatenate(feature_list, axis=0)
             wifi_list = np.concatenate(wifi_list, axis=0)
             if config['dataset_name'] == 'mmfi-csi' or config['dataset_name'] == 'wipose':
                 label_list = np.concatenate(label_list, axis=0)
             
         print(f'In epoch {epoch}, test losss: {avg_val_loss}')
         print(f'test mpjpe: {avg_val_mpjpe}, test pa-mpjpe: {avg_val_pampjpe}, test pck50: {pck_overall[0]}, test pck40: {pck_overall[1]}, test pck30: {pck_overall[2]}, test pck20: {pck_overall[3]}, test pck10: {pck_overall[4]}.')
-        # if config['dataset_name'] == 'mmfi-csi':
-        #     np.savez(os.path.join(test_feature_path, 'test_feature.npz'), fea=feature_list, pred_pose=pred_list, gt_pose=gt_list, att=[attention_list_first, attention_list_second], wifi=wifi_list, label=label_list)    
-        # elif config['dataset_name'] == 'person-in-wifi-3d':
-        #     np.savez(os.path.join(test_feature_path, 'test_feature.npz'), fea=feature_list, pred_pose=pred_list, gt_pose=gt_list, att=[attention_list_first, attention_list_second], wifi=wifi_list)    
-        # elif config['dataset_name'] == 'wipose':
-        #     np.savez(os.path.join(test_feature_path, 'test_feature.npz'), fea=feature_list, pred_pose=pred_list, gt_pose=gt_list, att=[attention_list_first, attention_list_second], wifi=wifi_list, label=label_list)
+        
+        scheduler.step()
 
 
         ''' save model '''
@@ -367,9 +391,7 @@ if __name__ == '__main__':
 
     print('*'*100)
     print(f'Best mpjpe: {best_val_mpjpe}') 
-    print(f'Best pa-mpjpe: {best_val_pampjpe}')  
+    print(f'Best pa-mpjpe: {best_val_pampjpe}') 
     for idx, pck_value in enumerate(best_val_pck):
-        print(f'Best pck{pck_order[idx]}: {pck_value}')   
+        print(f'Best pck{pck_order[idx]}: {pck_value}') 
     print('*'*100)
-    
-    

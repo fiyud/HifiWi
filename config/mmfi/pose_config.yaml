@@ -90,8 +90,7 @@ total_epoch: 50
 dataset_name: mmfi-csi
 num_person: 1
 setting: protocol1-s1
-experiment_name: DT-Pose-ratio80   # as_our_p1s1_transformer ### experiment_name: ghostpose
+experiment_name: DT-Pose-ratio80   # as_our_p1s1_transformer
 training_semi: False
 pretrained_model_path: pretrain_weights/mmfi-csi/protocol1-s1/pretrain_our_ratio80.pt
 save_path: pose_weights
-

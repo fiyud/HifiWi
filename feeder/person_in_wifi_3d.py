@@ -59,17 +59,16 @@ class PersonInWif3D(Dataset):
             keypoint_path = os.path.join(self.data_root,'keypoint',(str(filename)+'.npy'))
             pose_number = int(filename.split('_')[0][2])
             frame_idx = int(filename.split('_')[2])
-            next_frame_file_name = filename.split('_')[0]+'_'+filename.split('_')[1]+'_'+str(frame_idx+1)
-            if next_frame_file_name in file_name_list:
-                data_dict = {   
-                                'pose_number': pose_number,
-                                'frame_idx': frame_idx,
-                                'csi_path': csi_path,
-                                'keypoint_path':keypoint_path
-                                }
-                data_dict['csi_path_next_frame'] = os.path.join(self.data_root,'csi_ap',(str(next_frame_file_name)+'.npy'))
-                data_dict['keypoint_path_next_frame'] = os.path.join(self.data_root,'keypoint',(str(next_frame_file_name)+'.npy'))
-                data_info.append(data_dict)
+            
+            data_dict = {   
+                'pose_number': pose_number,
+                'frame_idx': frame_idx,
+                'csi_path': csi_path,
+                'keypoint_path':keypoint_path
+                }
+            data_dict['csi_path_next_frame'] = os.path.join(self.data_root,'csi_ap',(str(filename)+'.npy'))
+            data_dict['keypoint_path_next_frame'] = os.path.join(self.data_root,'keypoint',(str(filename)+'.npy'))
+            data_info.append(data_dict)
         return data_info
     
 

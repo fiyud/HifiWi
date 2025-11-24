@@ -208,7 +208,7 @@ class MMFi_Dataset(Dataset):
     def load_test_iid_data(self):
         data_info = []
         # read mmfi_action_segments.csv
-        seg_csv_path = r'D:\NCKH.2025-2026\VinWifi\MMFiDataset\MMFi_action_segments.csv'
+        seg_csv_path = '/root/autodl-tmp/WIFI_Pose_Estimation/MMFi_Dataset/MMFi_action_segments.csv'
         seg_csv = pd.read_csv(seg_csv_path)
         # 初始化字典
         action_dict = defaultdict(lambda: {'start': [], 'end': []})
@@ -270,7 +270,7 @@ class MMFi_Dataset(Dataset):
     def load_train_iid_data(self):
         data_info = []
         # read mmfi_action_segments.csv
-        seg_csv_path = r'D:\NCKH.2025-2026\VinWifi\MMFiDataset\MMFi_action_segments.csv'
+        seg_csv_path = '/root/autodl-tmp/WIFI_Pose_Estimation/MMFi_Dataset/MMFi_action_segments.csv'
         seg_csv = pd.read_csv(seg_csv_path)
         # 初始化字典
         action_dict = defaultdict(lambda: {'start': [], 'end': []})
@@ -329,10 +329,11 @@ class MMFi_Dataset(Dataset):
                     raise ValueError('Unsupport data unit!')
         return data_info
     
+
     def load_semi_data(self):
         data_info = []
         # read mmfi_action_segments.csv
-        seg_csv_path = r'D:\NCKH.2025-2026\VinWifi\MMFiDataset\MMFi_action_segments.csv'
+        seg_csv_path = '/root/autodl-tmp/WIFI_Pose_Estimation/MMFi_Dataset/MMFi_action_segments.csv'
         seg_csv = pd.read_csv(seg_csv_path)
         # 初始化字典
         action_dict = defaultdict(lambda: {'start': [], 'end': []})
@@ -379,7 +380,7 @@ class MMFi_Dataset(Dataset):
     # def load_test_data(self):
     #     data_info = []
     #     # read mmfi_action_segments.csv
-    #     seg_csv_path = r'D:\NCKH.2025-2026\VinWifi\MMFiDataset\MMFi_action_segments.csv'
+    #     seg_csv_path = '/root/autodl-tmp/WIFI_Pose_Estimation/MMFi_Dataset/MMFi_action_segments.csv'
     #     seg_csv = pd.read_csv(seg_csv_path)
     #     # 初始化字典
     #     action_dict = defaultdict(lambda: {'start': [], 'end': []})
@@ -425,7 +426,7 @@ class MMFi_Dataset(Dataset):
     def load_test_data(self):
         data_info = []
         # read mmfi_action_segments.csv
-        seg_csv_path = r'D:\NCKH.2025-2026\VinWifi\MMFiDataset\MMFi_action_segments.csv'
+        seg_csv_path = '/root/autodl-tmp/WIFI_Pose_Estimation/MMFi_Dataset/MMFi_action_segments.csv'
         seg_csv = pd.read_csv(seg_csv_path)
         # 初始化字典
         action_dict = defaultdict(lambda: {'start': [], 'end': []})
@@ -487,7 +488,7 @@ class MMFi_Dataset(Dataset):
     def load_data(self):
         data_info = []
         # read mmfi_action_segments.csv
-        seg_csv_path = r'D:\NCKH.2025-2026\VinWifi\MMFiDataset\MMFi_action_segments.csv'
+        seg_csv_path = '/root/autodl-tmp/WIFI_Pose_Estimation/MMFi_Dataset/MMFi_action_segments.csv'
         seg_csv = pd.read_csv(seg_csv_path)
         # 初始化字典
         action_dict = defaultdict(lambda: {'start': [], 'end': []})

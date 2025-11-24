@@ -172,6 +172,69 @@ def compute_similarity_transform(X, Y, compute_optimal_scale=False):
 
     return d, Z, T, b, c
 
+import numpy as np
+
+def compute_similarity_transform_debug(X, Y, compute_optimal_scale=False):
+    """
+    Same as compute_similarity_transform, but prints debug info before SVD.
+    """
+    muX = X.mean(0)
+    muY = Y.mean(0)
+
+    X0 = X - muX
+    Y0 = Y - muY
+
+    ssX = (X0**2.).sum()
+    ssY = (Y0**2.).sum()
+
+    normX = np.sqrt(ssX)
+    normY = np.sqrt(ssY)
+
+    X0 = X0 / normX
+    Y0 = Y0 / normY
+
+    print("=== DEBUG INFO ===")
+    print("X0 shape:", X0.shape, "Y0 shape:", Y0.shape)
+    print("X0 min/max/mean:", X0.min(), X0.max(), X0.mean())
+    print("Y0 min/max/mean:", Y0.min(), Y0.max(), Y0.mean())
+    print("X0 norm:", np.linalg.norm(X0), "Y0 norm:", np.linalg.norm(Y0))
+
+    A = np.dot(X0.T, Y0)
+    print("A shape:", A.shape, "A min/max/mean:", A.min(), A.max(), A.mean())
+    print("A contains NaN:", np.isnan(A).any(), "A contains Inf:", np.isinf(A).any())
+
+    try:
+        U, s, Vt = np.linalg.svd(A, full_matrices=False)
+    except np.linalg.LinAlgError as e:
+        print("SVD FAILED:", e)
+        # optionally add small epsilon to stabilize
+        eps = 1e-6
+        A += eps * np.eye(A.shape[0])
+        print("Retrying SVD with eps*I...")
+        U, s, Vt = np.linalg.svd(A, full_matrices=False)
+
+    V = Vt.T
+    T = np.dot(V, U.T)
+
+    detT = np.linalg.det(T)
+    V[:, -1] *= np.sign(detT)
+    s[-1] *= np.sign(detT)
+    T = np.dot(V, U.T)
+    traceTA = s.sum()
+
+    if compute_optimal_scale:
+        b = traceTA * normX / normY
+        d = 1 - traceTA**2
+        Z = normX * traceTA * np.dot(Y0, T) + muX
+    else:
+        b = 1
+        d = 1 + ssY/ssX - 2 * traceTA * normY / normX
+        Z = normY * np.dot(Y0, T) + muX
+
+    c = muX - b * np.dot(muY, T)
+
+    return d, Z, T, b, c
+
 
 def calulate_error(preds, gts, align=False):
     """

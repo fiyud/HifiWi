@@ -224,7 +224,6 @@ class CustomTransformerEncoderLayer(nn.Module):
 
 
 
-
 class ViT_Pose_Decoder(torch.nn.Module):
     def __init__(self, encoder : MAE_Encoder, keypoints=17, coor_num=3, token_num=285, dataset='mmfi-csi', num_person=1) -> None:
         super().__init__()
