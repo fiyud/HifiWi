@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 
-class PairwiseRefine(nn.Module):
+lass PairwiseRefine(nn.Module):
     def __init__(self, dim, hidden=128):
         super().__init__()
         self.mlp = nn.Sequential(
